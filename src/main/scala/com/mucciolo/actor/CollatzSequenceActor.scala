@@ -1,21 +1,28 @@
 package com.mucciolo.actor
 
+import akka.NotUsed
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.stream.scaladsl.Source
+import akka.stream.{CompletionStrategy, OverflowStrategy}
+import akka.stream.typed.scaladsl.ActorSource
 import com.mucciolo.actor.CollatzSequenceActor.SequenceElement
 import com.mucciolo.actor.Mapper.Apply
 
+import java.util.UUID
+
 object CollatzSequenceActor {
 
-  sealed trait Message
-  final case class GetSequence(id: String, initialNumber: Long, replyTo: ActorRef[CollatzSequence]) extends Message
-  final case class SequenceElement(id: String, value: Long) extends Message
-  final case class CollatzSequence(id: String, seq: List[Long])
+  sealed trait Event
+  sealed trait RequestEvent extends Event
+  sealed trait SequenceEvent extends Event
+  final case class GetSequence(id: UUID, initialNumber: Long, replyTo: ActorRef[SequenceEvent]) extends RequestEvent
+  final case class SequenceElement(id: UUID, n: Long) extends SequenceEvent
+  final case class SequenceComplete(id: UUID) extends SequenceEvent
 
-  private var idToActorRef = Map.empty[String, ActorRef[CollatzSequence]]
-  private var idToSequence = Map.empty[String, List[Long]]
+  private var idToActorRef = Map.empty[UUID, ActorRef[SequenceEvent]]
 
-  def apply(): Behavior[Message] =
+  def apply(): Behavior[Event] =
     Behaviors.setup { context =>
 
       val evenMapper = context.spawn(EvenMapper(), "even-mapper")
@@ -27,26 +34,27 @@ object CollatzSequenceActor {
 
             case GetSequence(id, initialNumber, replyTo) =>
 
+              replyTo ! SequenceElement(id, initialNumber)
+
               if (initialNumber == 1) {
-                replyTo ! CollatzSequence(id, List(initialNumber))
+                replyTo ! SequenceComplete(id)
               } else {
                 idToActorRef += id -> replyTo
-                idToSequence += id -> List(initialNumber)
                 val mapper = if (initialNumber % 2 == 0) evenMapper else oddMapper
                 mapper ! Mapper.Apply(id, initialNumber, context.self)
               }
 
-            case SequenceElement(id, value) =>
+            case element @ SequenceElement(id, n) =>
 
-              if (value == 1) {
-                val replyTo = idToActorRef(id)
-                val seq = (value :: idToSequence(id)).reverse
-                replyTo ! CollatzSequence(id, seq)
+              val replyTo = idToActorRef(id)
+              replyTo ! element
+
+              if (n == 1) {
+                replyTo ! SequenceComplete(id)
                 idToActorRef -= id
               } else {
-                idToSequence += id -> (value :: idToSequence(id))
-                val mapper = if (value % 2 == 0) evenMapper else oddMapper
-                mapper ! Mapper.Apply(id, value, context.self)
+                val mapper = if (n % 2 == 0) evenMapper else oddMapper
+                mapper ! Mapper.Apply(id, n, context.self)
               }
           }
 
@@ -54,10 +62,27 @@ object CollatzSequenceActor {
         }
       )
     }
+
+  def stream(requestId: UUID, initialNumber: Long)
+            (implicit collatzSequenceActor: ActorSystem[GetSequence]): Source[Long, NotUsed] = {
+
+    val (streamActor, stream) = ActorSource.actorRef[SequenceEvent](
+      completionMatcher = {
+        case SequenceComplete(id) if id == requestId => CompletionStrategy.draining
+      },
+      failureMatcher = PartialFunction.empty,
+      bufferSize = 2048,
+      overflowStrategy = OverflowStrategy.fail
+    ).preMaterialize()
+
+    collatzSequenceActor ! GetSequence(requestId, initialNumber, streamActor)
+
+    stream.collect { case SequenceElement(id, n) if id == requestId => n }
+  }
 }
 
 object Mapper {
-  final case class Apply(id: String, n: Long, replyTo: ActorRef[SequenceElement])
+  final case class Apply(id: UUID, n: Long, replyTo: ActorRef[SequenceElement])
 }
 
 trait Mapper {

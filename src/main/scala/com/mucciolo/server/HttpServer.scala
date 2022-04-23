@@ -1,50 +1,36 @@
 package com.mucciolo.server
 
 import akka.actor.typed.ActorSystem
-import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives
-import akka.util.{ByteString, Timeout}
+import akka.util.ByteString
 import com.mucciolo.actor.CollatzSequenceActor
-import com.mucciolo.actor.CollatzSequenceActor.{CollatzSequence, GetSequence}
+import com.mucciolo.actor.CollatzSequenceActor.GetSequence
 import com.mucciolo.stream.CollatzGraphStream
-import spray.json.DefaultJsonProtocol
 
 import java.util.UUID
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.Future
 
-object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProtocol {
+object HttpServer extends Directives {
 
-  def start(implicit actorSystem: ActorSystem[CollatzSequenceActor.Message]): Future[Http.ServerBinding] = {
-
-    implicit val executionContext: ExecutionContextExecutor = actorSystem.executionContext
-    val collatzSequenceActor = actorSystem
+  def start(implicit actorSystem: ActorSystem[GetSequence]): Future[Http.ServerBinding] = {
 
     val route = {
-      pathPrefix("collatz") {
+      pathPrefix("collatz-stream") {
         concat(
-          path("stream" / LongNumber) { initialNumber =>
+          path("graph" / LongNumber) { initialNumber =>
             get {
-              complete(
-                HttpEntity(
-                  ContentTypes.`text/plain(UTF-8)`,
-                  CollatzGraphStream.from(initialNumber).map(n => ByteString(s"$n, "))))
+              val data = CollatzGraphStream.from(initialNumber).map(n => ByteString(s"$n, "))
+              complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, data))
             }
           },
           path("actor" / LongNumber) { initialNumber =>
-            get {
-              implicit val timeout: Timeout = 2.seconds
 
-              complete(
-                (collatzSequenceActor ? (replyTo => GetSequence(UUID.randomUUID().toString, initialNumber, replyTo)))
-                  .mapTo[CollatzSequence]
-                  .map(_.seq)
-              )
+            val requestId = UUID.randomUUID()
+            val data = CollatzSequenceActor.stream(requestId, initialNumber).map(n => ByteString(s"$n, "))
 
-            }
+            complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, data))
           }
         )
       }
