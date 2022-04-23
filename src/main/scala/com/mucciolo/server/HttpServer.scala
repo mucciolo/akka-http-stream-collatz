@@ -41,8 +41,10 @@ object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProto
           }
         },
         path("actor" / LongNumber) { initialNumber =>
-          val requestId = UUID.randomUUID()
-          complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
+          get {
+            val requestId = UUID.randomUUID()
+            complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
+          }
         }
       )
     }
