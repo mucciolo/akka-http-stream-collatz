@@ -4,8 +4,8 @@ import akka.NotUsed
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.stream.scaladsl.Source
-import akka.stream.{CompletionStrategy, OverflowStrategy}
 import akka.stream.typed.scaladsl.ActorSource
+import akka.stream.{CompletionStrategy, OverflowStrategy}
 import com.mucciolo.actor.CollatzSequenceActor.SequenceElement
 import com.mucciolo.actor.Mapper.Apply
 
@@ -28,39 +28,37 @@ object CollatzSequenceActor {
       val evenMapper = context.spawn(EvenMapper(), "even-mapper")
       val oddMapper = context.spawn(OddMapper(), "odd-mapper")
 
-      Behaviors.logMessages(
-        Behaviors.receiveMessage { message =>
-          message match {
+      Behaviors.receiveMessage { message =>
+        message match {
 
-            case GetSequence(id, initialNumber, replyTo) =>
+          case GetSequence(id, initialNumber, replyTo) =>
 
-              replyTo ! SequenceElement(id, initialNumber)
+            replyTo ! SequenceElement(id, initialNumber)
 
-              if (initialNumber == 1) {
-                replyTo ! SequenceComplete(id)
-              } else {
-                idToActorRef += id -> replyTo
-                val mapper = if (initialNumber % 2 == 0) evenMapper else oddMapper
-                mapper ! Mapper.Apply(id, initialNumber, context.self)
-              }
+            if (initialNumber == 1) {
+              replyTo ! SequenceComplete(id)
+            } else {
+              idToActorRef += id -> replyTo
+              val mapper = if (initialNumber % 2 == 0) evenMapper else oddMapper
+              mapper ! Mapper.Apply(id, initialNumber, context.self)
+            }
 
-            case element @ SequenceElement(id, n) =>
+          case element @ SequenceElement(id, n) =>
 
-              val replyTo = idToActorRef(id)
-              replyTo ! element
+            val replyTo = idToActorRef(id)
+            replyTo ! element
 
-              if (n == 1) {
-                replyTo ! SequenceComplete(id)
-                idToActorRef -= id
-              } else {
-                val mapper = if (n % 2 == 0) evenMapper else oddMapper
-                mapper ! Mapper.Apply(id, n, context.self)
-              }
-          }
-
-          Behaviors.same
+            if (n == 1) {
+              replyTo ! SequenceComplete(id)
+              idToActorRef -= id
+            } else {
+              val mapper = if (n % 2 == 0) evenMapper else oddMapper
+              mapper ! Mapper.Apply(id, n, context.self)
+            }
         }
-      )
+
+        Behaviors.same
+      }
     }
 
   def stream(requestId: UUID, initialNumber: Long)
