@@ -1,18 +1,29 @@
 package com.mucciolo.server
 
+import akka.NotUsed
 import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model._
+import akka.http.scaladsl.common.EntityStreamingSupport
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.server.Directives
+import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
 import com.mucciolo.actor.CollatzSequenceActor
 import com.mucciolo.actor.CollatzSequenceActor.GetSequence
 import com.mucciolo.stream.CollatzGraphStream
+import spray.json.DefaultJsonProtocol
 
 import java.util.UUID
 import scala.concurrent.Future
 
-object HttpServer extends Directives {
+object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProtocol {
+
+  final case class CollatzSequenceElement(index: Long, value: Long)
+
+  private implicit val sequenceElementFormat = jsonFormat2(CollatzSequenceElement.apply)
+  private val newLine = ByteString("\n")
+  private implicit val jsonStreamingSupport = EntityStreamingSupport.json()
+    .withFramingRenderer(Flow[ByteString].map(bs => bs ++ newLine))
 
   def start(implicit actorSystem: ActorSystem[GetSequence]): Future[Http.ServerBinding] = {
 
@@ -21,21 +32,23 @@ object HttpServer extends Directives {
         concat(
           path("graph" / LongNumber) { initialNumber =>
             get {
-              val data = CollatzGraphStream.from(initialNumber).map(n => ByteString(s"$n, "))
-              complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, data))
+              complete(mapStreamToCollatzSequenceElement(CollatzGraphStream.from(initialNumber)))
             }
           },
           path("actor" / LongNumber) { initialNumber =>
-
             val requestId = UUID.randomUUID()
-            val data = CollatzSequenceActor.stream(requestId, initialNumber).map(n => ByteString(s"$n, "))
-
-            complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, data))
+            complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
           }
         )
       }
     }
 
     Http().newServerAt("localhost", 8080).bind(route)
+  }
+
+  private def mapStreamToCollatzSequenceElement(stream: Source[Long, NotUsed]) = {
+    stream.zipWithIndex.map {
+      case (value, index) => CollatzSequenceElement(index, value)
+    }
   }
 }
