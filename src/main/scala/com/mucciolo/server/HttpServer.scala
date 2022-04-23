@@ -18,6 +18,8 @@ import scala.concurrent.Future
 
 object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProtocol {
 
+  final case class Config(host: String, port: Int)
+
   final case class CollatzSequenceElement(index: Long, value: Long)
 
   private implicit val sequenceElementFormat = jsonFormat2(CollatzSequenceElement.apply)
@@ -25,27 +27,27 @@ object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProto
   private implicit val jsonStreamingSupport = EntityStreamingSupport.json()
     .withFramingRenderer(Flow[ByteString].map(bs => bs ++ newLine))
 
-  def start(implicit actorSystem: ActorSystem[GetSequence]): Future[Http.ServerBinding] = {
-
-    val route = {
-      pathPrefix("collatz-stream") {
-        concat(
-          path("graph" / LongNumber) { initialNumber =>
-            get {
-              complete(mapStreamToCollatzSequenceElement(CollatzGraphStream.from(initialNumber)))
-            }
-          },
-          path("actor" / LongNumber) { initialNumber =>
-            val requestId = UUID.randomUUID()
-            complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
-          }
-        )
-      }
-    }
-
-    Http().newServerAt("localhost", 8080).bind(route)
+  def run(config: Config)(implicit actorSystem: ActorSystem[GetSequence]): Future[Http.ServerBinding] = {
+    Http().newServerAt(config.host, config.port).bind(buildRoute)
   }
 
+  private def buildRoute(implicit actorSystem: ActorSystem[GetSequence]) = {
+
+    pathPrefix("collatz-stream") {
+      concat(
+        path("graph" / LongNumber) { initialNumber =>
+          get {
+            complete(mapStreamToCollatzSequenceElement(CollatzGraphStream.from(initialNumber)))
+          }
+        },
+        path("actor" / LongNumber) { initialNumber =>
+          val requestId = UUID.randomUUID()
+          complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
+        }
+      )
+    }
+
+  }
   private def mapStreamToCollatzSequenceElement(stream: Source[Long, NotUsed]) = {
     stream.zipWithIndex.map {
       case (value, index) => CollatzSequenceElement(index, value)

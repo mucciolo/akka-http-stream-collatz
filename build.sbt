@@ -5,6 +5,8 @@ lazy val AkkaVersion = "2.6.19"
 lazy val ScalaTestVersion = "3.2.11"
 lazy val LogbackVersion = "1.2.11"
 lazy val AkkaHttpVersion = "10.2.9"
+lazy val PureConfigVersion = "0.17.1"
+
 
 lazy val root = (project in file("."))
   .settings(
@@ -16,6 +18,7 @@ lazy val root = (project in file("."))
       "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
       "com.typesafe.akka" %% "akka-http-spray-json" % AkkaHttpVersion,
 
+      "com.github.pureconfig" %% "pureconfig" % PureConfigVersion,
       "ch.qos.logback" % "logback-classic" % LogbackVersion,
 
       "com.typesafe.akka" %% "akka-actor-testkit-typed" % AkkaVersion % Test,
