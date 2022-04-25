@@ -2,8 +2,8 @@ package com.mucciolo
 
 import akka.actor.CoordinatedShutdown
 import akka.actor.typed.ActorSystem
-import com.mucciolo.actor.CollatzSequenceActor
-import com.mucciolo.actor.CollatzSequenceActor.GetSequence
+import com.mucciolo.actor.CollatzSequencer
+import com.mucciolo.actor.CollatzSequencer.GetSequence
 import com.mucciolo.server.HttpServer
 import org.slf4j.{Logger, LoggerFactory}
 import pureconfig.ConfigSource
@@ -23,7 +23,7 @@ object HttpServerApp extends App {
       log.error(failures.prettyPrint())
 
     case Right(config) =>
-      implicit val actorSystem: ActorSystem[GetSequence] = ActorSystem(CollatzSequenceActor(), "collatz-stream")
+      implicit val actorSystem: ActorSystem[GetSequence] = ActorSystem(CollatzSequencer(), "collatz-stream")
       implicit val executionContext: ExecutionContextExecutor = actorSystem.executionContext
 
       HttpServer.run(config).onComplete {

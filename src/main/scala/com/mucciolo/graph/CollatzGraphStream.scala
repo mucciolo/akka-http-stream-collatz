@@ -1,4 +1,4 @@
-package com.mucciolo.stream
+package com.mucciolo.graph
 
 import akka.NotUsed
 import akka.stream._

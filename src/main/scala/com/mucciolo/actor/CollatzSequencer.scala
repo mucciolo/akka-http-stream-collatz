@@ -6,12 +6,12 @@ import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.stream.scaladsl.Source
 import akka.stream.typed.scaladsl.ActorSource
 import akka.stream.{CompletionStrategy, OverflowStrategy}
-import com.mucciolo.actor.CollatzSequenceActor.SequenceElement
+import com.mucciolo.actor.CollatzSequencer.SequenceElement
 import com.mucciolo.actor.Mapper.Apply
 
 import java.util.UUID
 
-object CollatzSequenceActor {
+object CollatzSequencer {
 
   sealed trait Event
   sealed trait RequestEvent extends Event
@@ -85,7 +85,7 @@ object Mapper {
 
 trait Mapper {
 
-  def behaviour(f: Long => Long): Behavior[Apply] = Behaviors.receiveMessage { message =>
+  def map(f: Long => Long): Behavior[Apply] = Behaviors.receiveMessage { message =>
     message.replyTo ! SequenceElement(message.id, f(message.n))
     Behaviors.same
   }
@@ -93,9 +93,9 @@ trait Mapper {
 }
 
 object EvenMapper extends Mapper {
-  def apply(): Behavior[Apply] = behaviour(_ / 2)
+  def apply(): Behavior[Apply] = map(_ / 2)
 }
 
 object OddMapper extends Mapper {
-  def apply(): Behavior[Apply] = behaviour(3 * _ + 1)
+  def apply(): Behavior[Apply] = map(3 * _ + 1)
 }

@@ -8,9 +8,9 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.server.Directives
 import akka.stream.scaladsl.{Flow, Source}
 import akka.util.ByteString
-import com.mucciolo.actor.CollatzSequenceActor
-import com.mucciolo.actor.CollatzSequenceActor.GetSequence
-import com.mucciolo.stream.CollatzGraphStream
+import com.mucciolo.actor.CollatzSequencer
+import com.mucciolo.actor.CollatzSequencer.GetSequence
+import com.mucciolo.graph.CollatzGraphStream
 import spray.json.DefaultJsonProtocol
 
 import java.util.UUID
@@ -43,7 +43,7 @@ object HttpServer extends Directives with SprayJsonSupport with DefaultJsonProto
         path("actor" / LongNumber) { initialNumber =>
           get {
             val requestId = UUID.randomUUID()
-            complete(mapStreamToCollatzSequenceElement(CollatzSequenceActor.stream(requestId, initialNumber)))
+            complete(mapStreamToCollatzSequenceElement(CollatzSequencer.stream(requestId, initialNumber)))
           }
         }
       )

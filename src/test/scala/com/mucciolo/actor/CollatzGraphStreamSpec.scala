@@ -1,7 +1,7 @@
 package com.mucciolo.actor
 
 import akka.stream.testkit.scaladsl.TestSink
-import com.mucciolo.stream.CollatzGraphStream.from
+import com.mucciolo.graph.CollatzGraphStream.from
 
 final class CollatzGraphStreamSpec extends CollatzSequenceTest {
 
