@@ -10,7 +10,7 @@ lazy val PureConfigVersion = "0.17.1"
 
 lazy val root = (project in file("."))
   .settings(
-    name := "collatz-http-stream",
+    name := "akka-http-stream-collatz",
     fork := true,
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
