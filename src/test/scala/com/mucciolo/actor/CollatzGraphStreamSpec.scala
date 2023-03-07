@@ -1,18 +1,22 @@
 package com.mucciolo.actor
 
 import akka.stream.testkit.scaladsl.TestSink
-import com.mucciolo.graph.CollatzGraphStream.from
+import com.mucciolo.graph.CollatzGraphStream
 
 final class CollatzGraphStreamSpec extends CollatzSequenceTest {
 
-  "CollatzGraphStream" must {
-
-    "return the correct sequence" in {
-      forAll (expectedSequences) { (n, seq) =>
-        from(n).runWith(TestSink[Long]()).request(seq.length).expectNextN(seq).expectComplete()
+  "CollatzGraphStream" when {
+    "from(n)" should {
+      "return the Collatz sequence starting with n" in {
+        forAll(expectedSequences) { (n, seq) =>
+          CollatzGraphStream.from(n)
+            .runWith(TestSink[Long]())
+            .request(seq.length)
+            .expectNextN(seq)
+            .expectComplete()
+        }
       }
     }
-
   }
 
 }

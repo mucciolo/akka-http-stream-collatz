@@ -6,54 +6,60 @@ import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.stream.scaladsl.Source
 import akka.stream.typed.scaladsl.ActorSource
 import akka.stream.{CompletionStrategy, OverflowStrategy}
-import com.mucciolo.actor.CollatzSequencer.SequenceElement
-import com.mucciolo.actor.Mapper.Apply
+import com.mucciolo.actor.CollatzSequencer.ElementComputed
+import com.mucciolo.actor.CollatzMapper.NextElement
 
 import java.util.UUID
 
 object CollatzSequencer {
 
-  sealed trait Event
-  sealed trait RequestEvent extends Event
-  sealed trait SequenceEvent extends Event
-  final case class GetSequence(id: UUID, initialNumber: Long, replyTo: ActorRef[SequenceEvent]) extends RequestEvent
-  final case class SequenceElement(id: UUID, n: Long) extends SequenceEvent
-  final case class SequenceComplete(id: UUID) extends SequenceEvent
+  sealed trait Response
+  final case class SequenceElement(n: Long) extends Response
+  final object SequenceComplete extends Response
 
-  private var idToActorRef = Map.empty[UUID, ActorRef[SequenceEvent]]
+  sealed trait Message
 
-  def apply(): Behavior[Event] =
+  sealed trait Query extends Message
+  final case class GetSequence(initialNumber: Long, replyTo: ActorRef[Response]) extends Query
+
+  sealed trait Event extends Message
+  final case class ElementComputed(sequenceId: UUID, n: Long) extends Event
+
+  private var requesterById = Map.empty[UUID, ActorRef[Response]]
+
+  def apply(): Behavior[Message] =
     Behaviors.setup { context =>
 
-      val evenMapper = context.spawn(EvenMapper(), "even-mapper")
-      val oddMapper = context.spawn(OddMapper(), "odd-mapper")
+      val evenMapper = context.spawn(EvenCollatzMapper(), "even-mapper")
+      val oddMapper = context.spawn(OddCollatzMapper(), "odd-mapper")
 
       Behaviors.receiveMessage { message =>
         message match {
 
-          case GetSequence(id, initialNumber, replyTo) =>
+          case GetSequence(initialNumber, replyTo) =>
 
-            replyTo ! SequenceElement(id, initialNumber)
+            replyTo ! SequenceElement(initialNumber)
 
             if (initialNumber == 1) {
-              replyTo ! SequenceComplete(id)
+              replyTo ! SequenceComplete
             } else {
-              idToActorRef += id -> replyTo
+              val sequenceId = UUID.randomUUID()
+              requesterById += sequenceId -> replyTo
               val mapper = if (initialNumber % 2 == 0) evenMapper else oddMapper
-              mapper ! Mapper.Apply(id, initialNumber, context.self)
+              mapper ! CollatzMapper.NextElement(sequenceId, initialNumber, context.self)
             }
 
-          case element @ SequenceElement(id, n) =>
+          case ElementComputed(sequenceId, n) =>
 
-            val replyTo = idToActorRef(id)
-            replyTo ! element
+            val replyTo = requesterById(sequenceId)
+            replyTo ! SequenceElement(n)
 
             if (n == 1) {
-              replyTo ! SequenceComplete(id)
-              idToActorRef -= id
+              replyTo ! SequenceComplete
+              requesterById -= sequenceId
             } else {
               val mapper = if (n % 2 == 0) evenMapper else oddMapper
-              mapper ! Mapper.Apply(id, n, context.self)
+              mapper ! CollatzMapper.NextElement(sequenceId, n, context.self)
             }
         }
 
@@ -61,41 +67,42 @@ object CollatzSequencer {
       }
     }
 
-  def stream(requestId: UUID, initialNumber: Long)
+  def stream(initialNumber: Long)
             (implicit collatzSequenceActor: ActorSystem[GetSequence]): Source[Long, NotUsed] = {
 
-    val (streamActor, stream) = ActorSource.actorRef[SequenceEvent](
+    val (streamActor, stream) = ActorSource.actorRef[Response](
       completionMatcher = {
-        case SequenceComplete(id) if id == requestId => CompletionStrategy.draining
+        case SequenceComplete => CompletionStrategy.draining
       },
       failureMatcher = PartialFunction.empty,
-      bufferSize = 2048,
+      bufferSize = 1024,
       overflowStrategy = OverflowStrategy.fail
     ).preMaterialize()
 
-    collatzSequenceActor ! GetSequence(requestId, initialNumber, streamActor)
+    collatzSequenceActor ! GetSequence(initialNumber, streamActor)
 
-    stream.collect { case SequenceElement(id, n) if id == requestId => n }
+    stream.collect { case SequenceElement(n) => n }
   }
 }
 
-object Mapper {
-  final case class Apply(id: UUID, n: Long, replyTo: ActorRef[SequenceElement])
+object CollatzMapper {
+  final case class NextElement(id: UUID, n: Long, replyTo: ActorRef[ElementComputed])
 }
 
-trait Mapper {
+trait CollatzMapper {
 
-  def map(f: Long => Long): Behavior[Apply] = Behaviors.receiveMessage { message =>
-    message.replyTo ! SequenceElement(message.id, f(message.n))
+  def map(f: Long => Long): Behavior[NextElement] = Behaviors.receiveMessage { message =>
+    val nextElement = f(message.n)
+    message.replyTo ! ElementComputed(message.id, nextElement)
     Behaviors.same
   }
 
 }
 
-object EvenMapper extends Mapper {
-  def apply(): Behavior[Apply] = map(_ / 2)
+object EvenCollatzMapper extends CollatzMapper {
+  def apply(): Behavior[NextElement] = map(_ / 2)
 }
 
-object OddMapper extends Mapper {
-  def apply(): Behavior[Apply] = map(3 * _ + 1)
+object OddCollatzMapper extends CollatzMapper {
+  def apply(): Behavior[NextElement] = map(3 * _ + 1)
 }

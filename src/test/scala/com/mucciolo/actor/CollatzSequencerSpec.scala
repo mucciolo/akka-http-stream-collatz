@@ -1,30 +1,22 @@
 package com.mucciolo.actor
 
-import com.mucciolo.actor.CollatzSequencer.{GetSequence, SequenceComplete, SequenceElement, SequenceEvent}
-
-import java.util.UUID
+import com.mucciolo.actor.CollatzSequencer._
 
 final class CollatzSequencerSpec extends CollatzSequenceTest {
 
-  "CollatzSequencer" must {
+  "CollatzSequencer" when {
+    "told GetSequence(n, ref)" should {
+      "return the Collatz sequence starting with n" in {
+        forAll(expectedSequences) { (n, seq) =>
+          val probe = createTestProbe[Response]()
+          val computer = spawn(CollatzSequencer())
 
-    "return the correct sequence" in {
-      forAll (expectedSequences) { (n, seq) =>
-        assertSequence(n, seq)
+          computer ! GetSequence(n, probe.ref)
+          seq.foreach(n => probe.expectMessage(SequenceElement(n)))
+          probe.expectMessage(SequenceComplete)
+        }
       }
     }
-
   }
 
-  private def assertSequence(initialNumber: Long, seq: Seq[Long]): SequenceComplete = {
-
-    val probe = createTestProbe[SequenceEvent]()
-    val computer = spawn(CollatzSequencer())
-    val id = UUID.randomUUID()
-
-    computer ! GetSequence(id, initialNumber, probe.ref)
-    seq.foreach(n => probe.expectMessage(SequenceElement(id, n)))
-    probe.expectMessage(SequenceComplete(id))
-
-  }
 }

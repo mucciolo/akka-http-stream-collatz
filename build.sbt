@@ -7,11 +7,9 @@ lazy val LogbackVersion = "1.2.11"
 lazy val AkkaHttpVersion = "10.2.9"
 lazy val PureConfigVersion = "0.17.1"
 
-
 lazy val root = (project in file("."))
   .settings(
     name := "akka-http-stream-collatz",
-    fork := true,
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
       "com.typesafe.akka" %% "akka-stream-typed" % AkkaVersion,
